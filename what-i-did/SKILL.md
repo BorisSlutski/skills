@@ -182,6 +182,12 @@ Business unit icons:
 State icons:
 - `✅` merged  `🔄` open  `🔴` changes requested  `❌` closed
 
+### Step 6: Output in Cursor chat
+
+Print the full detailed summary (from Step 4) directly in your chat response so the user can read it in the IDE.
+Include all repos, all PR lines with state icons, and the totals block.
+**Do NOT skip this step. Output BEFORE sending to Slack.**
+
 ### Step 7: Send Slack DM to yourself
 
 Use `MCP-SLACK` MCP tools:
@@ -201,4 +207,5 @@ Use `MCP-SLACK` MCP tools:
 - Run independent API calls in parallel
 - Skip sections with zero activity
 - If no activity found yesterday, send the Slack message anyway: "No GitHub activity yesterday."
-- Slack message = TL;DR only; detailed breakdown is shown in chat only
+- Always output the full detailed breakdown in the Cursor chat (Step 6) before sending to Slack
+- Slack message includes the full PR list + TL;DR standup line
