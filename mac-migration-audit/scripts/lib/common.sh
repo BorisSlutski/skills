@@ -7,8 +7,21 @@ redact_file_to() {
   [[ -f "$src" ]] || return 0
 
   awk '
+    BEGIN { in_pem = 0 }
+
     {
       line = $0
+
+      # Omit PEM private key blocks
+      if (line ~ /-----BEGIN (RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/) {
+        print "# [REDACTED PEM private key block]"
+        in_pem = 1
+        next
+      }
+      if (in_pem) {
+        if (line ~ /-----END (RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/) in_pem = 0
+        next
+      }
 
       # Do not copy instructions to source secret/env files
       if (line ~ /^[[:space:]]*(source|\.)[[:space:]]+[^#]*\.(env|secrets)(\.[A-Za-z0-9._-]+)?([[:space:]]|$)/) {
@@ -17,15 +30,15 @@ redact_file_to() {
       }
 
       # Redact common token formats anywhere on the line
-      if (line ~ /(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,})/) {
-        gsub(/(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,})/, "[REDACTED]", line)
+      if (line ~ /(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/) {
+        gsub(/(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/, "[REDACTED]", line)
       }
 
-      # export VAR=value for secret-like variable names
-      if (line ~ /^[[:space:]]*(export[[:space:]]+)?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|PRIVATE|API)[A-Za-z0-9_]*=/) {
+      # export VAR=value for secret-like variable names (avoid bare API suffix false positives)
+      if (line ~ /^[[:space:]]*(export[[:space:]]+)?[A-Za-z0-9_]*(_KEY|_TOKEN|_SECRET|_PASSWORD|_CREDENTIAL|_AUTH|API_KEY|API_SECRET|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PRIVATE_KEY|SECRET_KEY|AUTH_TOKEN|PAT)[A-Za-z0-9_]*=/) {
         sub(/=.*/, "=[REDACTED]", line)
       }
-      # Generic api_key assignments
+      # Generic api_key assignments (key name contains api_key, not trailing API=)
       else if (line ~ /[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][[:space:]]*[=:][[:space:]]*/) {
         sub(/[=:][[:space:]]*.*/, "=[REDACTED]", line)
       }

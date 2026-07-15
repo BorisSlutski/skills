@@ -17,7 +17,12 @@ mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
 
 ### One-shot (auto-bootstrap on first run)
 
-Downloads the launcher; first run caches the full skill to `~/.cache/mac-migration-audit`:
+Downloads the launcher; first run caches the full skill to `~/.cache/mac-migration-audit`.
+The cache is version-stamped and auto-refreshes when outdated. Force a refresh with:
+
+```bash
+MAC_MIGRATION_FORCE_REFRESH=1 /tmp/mac-migration create-image --dry-run
+```
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration
@@ -88,6 +93,6 @@ mac-migration unimage ~/Desktop/my-mac-bundle
 ## What Is Never Captured
 
 - Private SSH keys
-- Passwords, tokens, API keys (best-effort redaction in dotfiles — always review `dotfiles/` before transfer)
+- Passwords, tokens, API keys (best-effort redaction — PEM blocks, JWTs, AWS keys, secret-like env vars; always review `dotfiles/` before transfer)
 - Browser saved passwords
 - Keychain contents

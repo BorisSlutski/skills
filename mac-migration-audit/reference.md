@@ -151,6 +151,8 @@ Use checkbox format. Group by phase:
 
 ### install.sh skeleton
 
+Uses direct commands (no `eval`) — same pattern as `scripts/lib/common.sh`.
+
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
@@ -158,22 +160,32 @@ set -euo pipefail
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
-run() {
-  if $DRY_RUN; then echo "[dry-run] $*"; else eval "$@"; fi
+run_cmd() {
+  if $DRY_RUN; then
+    printf '[dry-run]'
+    printf ' %q' "$@"
+    echo
+  else
+    "$@"
+  fi
 }
 
 echo "=== Mac Migration: install.sh ==="
 
 # 1. Homebrew
 if ! command -v brew &>/dev/null; then
-  run 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+  if $DRY_RUN; then
+    echo "[dry-run] install Homebrew from https://brew.sh"
+  else
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  fi
 fi
 
 # 2. Brewfile packages
-# run 'brew bundle --file=./Brewfile'
+# run_cmd brew bundle install --file=./Brewfile
 
 # 3. Dev tools
-# run 'brew install git node ...'
+# run_cmd brew install git node
 
 echo "=== install.sh complete ==="
 ```
