@@ -3,6 +3,10 @@
 # Usage: unimage.sh <bundle-dir> [--dry-run]
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/homebrew.sh
+source "$SCRIPT_DIR/lib/homebrew.sh"
+
 DRY_RUN=false
 BUNDLE_DIR=""
 
@@ -26,17 +30,8 @@ if [[ -z "$BUNDLE_DIR" || ! -d "$BUNDLE_DIR" ]]; then
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 STEP=0
 TOTAL_STEPS=6
-
-run() {
-  if $DRY_RUN; then
-    echo "  [dry-run] $*"
-  else
-    eval "$@"
-  fi
-}
 
 confirm() {
   if $DRY_RUN; then
@@ -64,22 +59,15 @@ step "Validate bundle"
 echo "Status: Completed."
 
 step "Install Homebrew"
-if ! command -v brew &>/dev/null; then
-  echo "Status: Running..."
-  if $DRY_RUN; then
-    echo "  [dry-run] Install Homebrew"
-  else
-    confirm "Install Homebrew? This requires network access." || { echo "Skipped."; }
-    if ! command -v brew &>/dev/null; then
-      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      # shellcheck disable=SC1091
-      [[ -f /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
-      # shellcheck disable=SC1091
-      [[ -f /usr/local/bin/brew ]] && eval "$(/usr/local/bin/brew shellenv)"
-    fi
-  fi
-else
+if command -v brew &>/dev/null; then
   echo "Status: Already installed."
+  setup_brew_shellenv
+elif $DRY_RUN; then
+  echo "Status: Running..."
+  install_homebrew true || echo "Skipped."
+else
+  echo "Status: Waiting for user confirmation."
+  install_homebrew false || echo "Skipped — some restore steps will not work without Homebrew."
 fi
 echo "Completed."
 
@@ -87,7 +75,11 @@ step "Install packages from Brewfile"
 if [[ -f "$BUNDLE_DIR/Brewfile" ]]; then
   echo "Status: Running..."
   if confirm "Run brew bundle install from captured Brewfile?"; then
-    run "brew bundle install --file=\"$BUNDLE_DIR/Brewfile\""
+    if $DRY_RUN; then
+      echo "  [dry-run] brew bundle install --file=$BUNDLE_DIR/Brewfile"
+    else
+      brew bundle install --file="$BUNDLE_DIR/Brewfile"
+    fi
   else
     echo "Skipped."
   fi
@@ -105,16 +97,24 @@ if [[ -d "$BUNDLE_DIR/dotfiles" ]]; then
       name=$(basename "$src")
       if [[ "$name" == "starship.toml" ]]; then
         dest="$HOME/.config/starship.toml"
-        run "mkdir -p \"$HOME/.config\""
+        if $DRY_RUN; then
+          echo "  [dry-run] mkdir -p $HOME/.config && cp $src $dest"
+        else
+          mkdir -p "$HOME/.config"
+          [[ -f "$dest" ]] && cp "$dest" "${dest}.bak" && echo "  Backed up $dest -> ${dest}.bak"
+          cp "$src" "$dest"
+          echo "  Restored $dest"
+        fi
       else
         dest="$HOME/$name"
+        if $DRY_RUN; then
+          echo "  [dry-run] cp $src $dest"
+        else
+          [[ -f "$dest" ]] && cp "$dest" "${dest}.bak" && echo "  Backed up $dest -> ${dest}.bak"
+          cp "$src" "$dest"
+          echo "  Restored $dest"
+        fi
       fi
-      if [[ -f "$dest" ]] && ! $DRY_RUN; then
-        cp "$dest" "${dest}.bak"
-        echo "  Backed up $dest -> ${dest}.bak"
-      fi
-      run "cp \"$src\" \"$dest\""
-      echo "  Restored $dest"
     done
   else
     echo "Skipped."
@@ -129,7 +129,11 @@ if [[ -f "$BUNDLE_DIR/extensions/vscode.txt" ]] && command -v code &>/dev/null; 
   if confirm "Install VS Code extensions from bundle?"; then
     while IFS= read -r ext; do
       [[ -n "$ext" ]] || continue
-      run "code --install-extension \"$ext\""
+      if $DRY_RUN; then
+        echo "  [dry-run] code --install-extension $ext"
+      else
+        code --install-extension "$ext"
+      fi
     done < "$BUNDLE_DIR/extensions/vscode.txt"
   fi
 fi
@@ -137,7 +141,11 @@ if [[ -f "$BUNDLE_DIR/extensions/cursor.txt" ]] && command -v cursor &>/dev/null
   if confirm "Install Cursor extensions from bundle?"; then
     while IFS= read -r ext; do
       [[ -n "$ext" ]] || continue
-      run "cursor --install-extension \"$ext\""
+      if $DRY_RUN; then
+        echo "  [dry-run] cursor --install-extension $ext"
+      else
+        cursor --install-extension "$ext"
+      fi
     done < "$BUNDLE_DIR/extensions/cursor.txt"
   fi
 fi

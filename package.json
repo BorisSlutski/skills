@@ -4,6 +4,10 @@
   "scripts": {
     "generate": "node scripts/generate-catalog.mjs",
     "validate": "node scripts/validate-skills.mjs",
-    "install:global": "npx -y skills add . --all -g"
+    "install:global": "npx -y skills add . --all -g",
+    "mac-migration": "mac-migration-audit/bin/mac-migration",
+    "mac-migration:create-image": "mac-migration-audit/bin/mac-migration create-image",
+    "mac-migration:validate": "mac-migration-audit/bin/mac-migration validate-bundle",
+    "mac-migration:unimage": "mac-migration-audit/bin/mac-migration unimage"
   }
 }

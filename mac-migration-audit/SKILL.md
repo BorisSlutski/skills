@@ -19,21 +19,69 @@ Your goal is to analyze the user's existing Mac and generate everything needed t
 4. **SSH keys** — list public keys and key names only; never export or display private key contents
 5. **Network/VPN** — inventory configs without exposing credentials
 
+## Run Without Cloning the Repo
+
+You do **not** need `git clone`. Pick one option:
+
+### Option A — Global skill install (recommended)
+
+```bash
+npx skills add BorisSlutski/skills/mac-migration-audit -g -y
+export PATH="$HOME/.cursor/skills/mac-migration-audit/bin:$PATH"
+mac-migration create-image --dry-run
+```
+
+If `~/.cursor/skills/` is empty, try `~/.agents/skills/mac-migration-audit/bin`.
+
+### Option B — `mac-migration` CLI
+
+```bash
+mac-migration create-image ~/Desktop/my-mac-bundle
+mac-migration create-image --install-homebrew
+mac-migration validate-bundle ~/Desktop/my-mac-bundle
+mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
+mac-migration help
+```
+
+### Option C — One-shot from GitHub (no install)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration
+chmod +x /tmp/mac-migration
+/tmp/mac-migration create-image --dry-run
+```
+
+### Option D — Direct script path
+
+```bash
+./mac-migration-audit/scripts/create-image.sh --dry-run
+# or after global install:
+~/.cursor/skills/mac-migration-audit/scripts/create-image.sh --dry-run
+```
+
+## Homebrew
+
+| Mac | Homebrew missing | What to do |
+|-----|------------------|------------|
+| **Source** (audit) | Audit still runs; Brewfile skipped | `--install-homebrew` installs with confirmation (opt-in) |
+| **Destination** (restore) | `unimage` prompts to install before `brew bundle` | Confirm when asked |
+
+Manual install: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+
 ## Quick Start
 
 **Source Mac (audit / create image):**
 
 ```bash
-./mac-migration-audit/scripts/create-image.sh
-# or specify output dir:
-./mac-migration-audit/scripts/create-image.sh ~/Desktop/mac-migration-bundle
+mac-migration create-image
+mac-migration create-image ~/Desktop/mac-migration-bundle --install-homebrew
 ```
 
 **Destination Mac (restore / unimage):**
 
 ```bash
-./mac-migration-audit/scripts/validate-bundle.sh ./mac-migration-bundle
-./mac-migration-audit/scripts/unimage.sh ./mac-migration-bundle
+mac-migration validate-bundle ./mac-migration-bundle
+mac-migration unimage ./mac-migration-bundle
 ```
 
 Use `--dry-run` on any script to preview without making changes.
@@ -59,6 +107,20 @@ Migration Progress:
 - [ ] Phase 3 – Reports and scripts generated
 - [ ] Phase 4 – Destination setup (if requested)
 ```
+
+## Script vs Agent Responsibilities
+
+| Task | Scripts | Agent (you) |
+|------|---------|-------------|
+| Raw inventory capture | `create-image.sh` | — |
+| Brewfile, extensions, dotfiles (redacted) | `create-image.sh` | — |
+| Data/cloud/browser/AI deep analysis | — | Phase 2 |
+| 11 markdown deliverables | — | Phase 3 |
+| Risk recommendations & scoring | — | Phase 3 |
+| Package restore on new Mac | `unimage.sh` | Manual steps guide |
+| SSH private keys, MFA, logins | — | `Manual_Steps.md` |
+
+Scripts capture **structure and safe configs**. The agent analyzes `raw/` inventory and generates reports, warnings, and manual steps.
 
 ---
 
@@ -119,38 +181,7 @@ List:
 
 Never export or display private key contents.
 
-**Development Tools**
-
-Detect and inventory:
-
-- Homebrew
-- Git
-- Docker
-- Docker Compose
-- Kubernetes tools
-- kubectl
-- Helm
-- Terraform
-- Python
-- pyenv
-- pip
-- pipx
-- Node.js
-- npm
-- pnpm
-- yarn
-- Java
-- Maven
-- Gradle
-- Go
-- Rust
-- Ruby
-- AWS CLI
-- Azure CLI
-- Google Cloud CLI
-- Trino CLI (if installed)
-
-Export versions and installation methods.
+**Development Tools** — detect versions and install method for: Homebrew, Git, Docker, Kubernetes (kubectl/helm), Terraform, Python (pyenv/pip/pipx), Node (npm/pnpm/yarn), Java (Maven/Gradle), Go, Rust, Ruby, cloud CLIs (aws/az/gcloud), Trino CLI. Full list in [reference.md](reference.md).
 
 ### IDEs & Editors
 
@@ -392,96 +423,15 @@ Examples:
 
 ### Migration Checklist
 
-Generate a checklist like:
-
-☐ Install Homebrew
-☐ Install Git
-☐ Restore SSH keys
-☐ Install VS Code
-☐ Restore extensions
-☐ Clone repositories
-☐ Install Docker
-☐ Restore browser extensions
-☐ Verify cloud synchronization
-☐ Verify development environment
-☐ Test Git
-☐ Test Docker
-☐ Verify terminal
-☐ Verify AI tools
-☐ Final validation
+Generate a checklist grouped by phase. See [reference.md](reference.md) for template.
 
 ---
 
 ## Phase 4 – Destination Mac Experience
 
-When executing on the new Mac, display progress similar to:
+When executing on the new Mac, use `unimage.sh` and display step-by-step progress with confirmations.
 
-```
-=================================================
-Mac Migration Assistant
-=================================================
-
-Step 1/15
-Install Homebrew
-
-Status:
-Running...
-
-Completed.
-
-Estimated time:
-2 minutes
-
----
-
-Step 2/15
-Installing Git...
-
-Completed.
-
----
-
-Step 3/15
-Installing VS Code...
-
-Completed.
-
----
-
-Step 4/15
-Restoring SSH configuration...
-
-Waiting for user confirmation.
-
----
-
-Step 5/15
-Cloud Verification
-
-Warning:
-
-The following folders exist only locally on the old Mac:
-
-- Projects/Archive
-- Documents/Finance
-
-Recommendation:
-
-Upload these folders to cloud storage or copy them manually before continuing.
-
-Continue? (Y/N)
-```
-
-Every step must include:
-
-- Step number
-- Description
-- Purpose
-- Automatic or Manual
-- Estimated duration
-- Progress indicator
-- Success or failure status
-- Recovery instructions if something fails
+For the progress UI template (step headers, warnings, recovery instructions), see [reference.md — Destination Progress Template](reference.md#destination-progress-template).
 
 ---
 
@@ -511,9 +461,12 @@ For deliverable templates and audit commands, see [reference.md](reference.md).
 
 | Script | Purpose | Run on |
 |--------|---------|--------|
+| `bin/mac-migration` | CLI wrapper — run without cloning repo | Either |
 | `scripts/create-image.sh` | Read-only audit; builds migration bundle | Source Mac |
 | `scripts/validate-bundle.sh` | Validates bundle structure before restore | Either Mac |
 | `scripts/unimage.sh` | Installs packages and restores configs from bundle | Destination Mac |
+
+Flags for `create-image`: `--dry-run`, `--install-homebrew` (prompts before installing Homebrew on source Mac).
 
 After `create-image.sh`, use the agent to analyze `raw/` inventory and generate the markdown deliverables listed above.
 

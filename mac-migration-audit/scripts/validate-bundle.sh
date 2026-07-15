@@ -51,7 +51,12 @@ echo
 if [[ -f "$BUNDLE_DIR/manifest.json" ]]; then
   echo "Manifest:"
   if command -v jq &>/dev/null; then
-    jq . "$BUNDLE_DIR/manifest.json"
+    if jq empty "$BUNDLE_DIR/manifest.json" 2>/dev/null; then
+      jq . "$BUNDLE_DIR/manifest.json"
+    else
+      echo "  FAIL manifest.json is not valid JSON" >&2
+      ERRORS=$((ERRORS + 1))
+    fi
   else
     cat "$BUNDLE_DIR/manifest.json"
   fi
@@ -60,6 +65,28 @@ if [[ -f "$BUNDLE_DIR/manifest.json" ]]; then
     echo "  FAIL manifest claims secrets are included — do not restore" >&2
     ERRORS=$((ERRORS + 1))
   fi
+fi
+
+echo
+echo "Brewfile:"
+if [[ -f "$BUNDLE_DIR/Brewfile" ]]; then
+  if [[ ! -s "$BUNDLE_DIR/Brewfile" ]]; then
+    echo "  WARN Brewfile is empty" >&2
+    WARNINGS=$((WARNINGS + 1))
+  elif command -v brew &>/dev/null; then
+    if brew bundle check --file="$BUNDLE_DIR/Brewfile" --verbose 2>/dev/null; then
+      echo "  OK   Brewfile (brew bundle check passed)"
+    else
+      echo "  WARN Brewfile failed brew bundle check (may still be valid on destination)" >&2
+      WARNINGS=$((WARNINGS + 1))
+    fi
+  else
+    echo "  WARN Brewfile present; brew not installed — skipped brew bundle check"
+    WARNINGS=$((WARNINGS + 1))
+  fi
+else
+  echo "  WARN No Brewfile (optional)"
+  WARNINGS=$((WARNINGS + 1))
 fi
 
 echo

@@ -277,3 +277,59 @@ Never copy secret values — inventory file names and structure only.
 **Unused** — no launch in 12+ months OR never launched (if data available)
 
 Use `mdls -name kMDItemLastUsedDate` on `.app` bundles when available.
+
+---
+
+## Destination Progress Template
+
+Use this format when executing Phase 4 on the destination Mac:
+
+```
+=================================================
+Mac Migration Assistant
+=================================================
+
+Step 1/15
+Install Homebrew
+
+Status:
+Running...
+
+Completed.
+
+---
+
+Step 4/15
+Restoring SSH configuration...
+
+Waiting for user confirmation.
+
+---
+
+Step 5/15
+Cloud Verification
+
+Warning:
+
+The following folders exist only locally on the old Mac:
+
+- Projects/Archive
+- Documents/Finance
+
+Recommendation:
+
+Upload these folders to cloud storage or copy them manually before continuing.
+
+Continue? (Y/N)
+```
+
+Every step must include:
+
+- Step number
+- Description
+- Purpose
+- Automatic or Manual
+- Progress indicator
+- Success or failure status
+- Recovery instructions if something fails
+

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# mac-migration — CLI wrapper (no repo clone required after global skill install).
+# Usage:
+#   mac-migration create-image [output-dir] [--dry-run] [--install-homebrew]
+#   mac-migration validate-bundle <bundle-dir>
+#   mac-migration unimage <bundle-dir> [--dry-run]
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKILL_ROOT="$(cd "$BIN_DIR/.." && pwd)"
+SCRIPTS="$SKILL_ROOT/scripts"
+
+usage() {
+  cat <<EOF
+Mac Migration Audit — run without cloning the repo.
+
+Install once (global skill):
+  npx skills add BorisSlutski/skills/mac-migration-audit -g -y
+
+Then add to PATH (pick one shell config file):
+  export PATH="\$HOME/.cursor/skills/mac-migration-audit/bin:\$PATH"
+  # or: ~/.agents/skills/mac-migration-audit/bin
+
+One-shot without install (downloads latest script from GitHub):
+  curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration && chmod +x /tmp/mac-migration
+  /tmp/mac-migration create-image --dry-run
+
+Commands:
+  create-image [dir] [--dry-run] [--install-homebrew]   Audit source Mac → bundle
+  validate-bundle <dir>                                  Check bundle before restore
+  unimage <dir> [--dry-run]                              Restore on destination Mac
+  help                                                   Show this message
+
+Examples:
+  mac-migration create-image ~/Desktop/my-mac-bundle
+  mac-migration create-image --install-homebrew
+  mac-migration validate-bundle ~/Desktop/my-mac-bundle
+  mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  create-image)
+    exec "$SCRIPTS/create-image.sh" "$@"
+    ;;
+  validate-bundle)
+    exec "$SCRIPTS/validate-bundle.sh" "$@"
+    ;;
+  unimage)
+    exec "$SCRIPTS/unimage.sh" "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

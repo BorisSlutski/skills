@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # create-image.sh — Read-only audit of source Mac; builds a migration bundle.
-# Usage: create-image.sh [output-dir] [--dry-run]
+# Usage: create-image.sh [output-dir] [--dry-run] [--install-homebrew]
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/homebrew.sh
+source "$SCRIPT_DIR/lib/homebrew.sh"
+# shellcheck source=lib/common.sh
+source "$SCRIPT_DIR/lib/common.sh"
+
 DRY_RUN=false
+INSTALL_HOMEBREW=false
 OUTPUT_DIR=""
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=true ;;
+    --install-homebrew) INSTALL_HOMEBREW=true ;;
     -*) echo "Unknown flag: $arg" >&2; exit 1 ;;
     *)
       if [[ -z "$OUTPUT_DIR" ]]; then
@@ -25,13 +33,7 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 HOSTNAME=$(scutil --get LocalHostName 2>/dev/null || hostname -s)
 OUTPUT_DIR="${OUTPUT_DIR:-$HOME/Desktop/mac-migration-bundle-$TIMESTAMP}"
 
-run() {
-  if $DRY_RUN; then
-    echo "[dry-run] $*"
-  else
-    eval "$@"
-  fi
-}
+dry() { $DRY_RUN && echo true || echo false; }
 
 log() { echo "==> $*"; }
 
@@ -50,19 +52,30 @@ redact_ssh_config() {
   fi
 }
 
-copy_if_exists() {
-  local src="$1" dest="$2"
-  if [[ -e "$src" ]]; then
-    run "mkdir -p \"$(dirname "$dest")\""
-    run "cp -a \"$src\" \"$dest\""
-  fi
-}
-
 log "Mac Migration — create-image (read-only)"
 log "Output: $OUTPUT_DIR"
 $DRY_RUN && log "DRY RUN — no files will be written"
 
-run "mkdir -p \"$OUTPUT_DIR/raw\" \"$OUTPUT_DIR/dotfiles\" \"$OUTPUT_DIR/extensions\" \"$OUTPUT_DIR/repos\""
+safe_mkdir_p "$OUTPUT_DIR/raw" "$(dry)"
+safe_mkdir_p "$OUTPUT_DIR/dotfiles" "$(dry)"
+safe_mkdir_p "$OUTPUT_DIR/extensions" "$(dry)"
+safe_mkdir_p "$OUTPUT_DIR/repos" "$(dry)"
+
+# --- Homebrew (optional install before audit) ---
+if ! command -v brew &>/dev/null; then
+  if $INSTALL_HOMEBREW; then
+    log "Homebrew not found — install requested"
+    if $DRY_RUN; then
+      install_homebrew true || true
+    else
+      install_homebrew false || log "Continuing audit without Homebrew (limited package inventory)"
+    fi
+  else
+    log "Homebrew not installed — skipping brew inventory (use --install-homebrew to install first)"
+  fi
+else
+  setup_brew_shellenv
+fi
 
 # --- OS & hardware ---
 log "Collecting OS and hardware info"
@@ -76,26 +89,28 @@ log "Collecting OS and hardware info"
   echo "# Disk Usage"
   df -h
 } > /tmp/mac-migration-os.txt
-run "cp /tmp/mac-migration-os.txt \"$OUTPUT_DIR/raw/os-hardware.txt\""
+safe_cp /tmp/mac-migration-os.txt "$OUTPUT_DIR/raw/os-hardware.txt" "$(dry)"
 
 # --- Homebrew ---
 log "Collecting Homebrew inventory"
 if command -v brew &>/dev/null; then
-  {
-    brew --version
-    echo "---"
-    brew list --versions 2>/dev/null || true
-    echo "---"
-    brew bundle dump --describe --force --file=/dev/stdout 2>/dev/null || true
-  } > /tmp/mac-migration-brew.txt
-  run "cp /tmp/mac-migration-brew.txt \"$OUTPUT_DIR/raw/homebrew.txt\""
-  grep -E '^brew ' /tmp/mac-migration-brew.txt > /tmp/Brewfile 2>/dev/null || true
-  if [[ -s /tmp/Brewfile ]]; then
-    run "cp /tmp/Brewfile \"$OUTPUT_DIR/Brewfile\""
+  if $DRY_RUN; then
+    echo "[dry-run] brew inventory and brew bundle dump --file=\"$OUTPUT_DIR/Brewfile\"" > /tmp/mac-migration-brew.txt
+    echo "[dry-run] brew bundle dump --file=\"$OUTPUT_DIR/Brewfile\""
+  else
+    {
+      brew --version
+      echo "---"
+      brew list --versions 2>/dev/null || true
+      echo "---"
+      brew bundle dump --describe --force --file=/dev/stdout 2>/dev/null || true
+    } > /tmp/mac-migration-brew.txt
+    brew bundle dump --describe --force --file="$OUTPUT_DIR/Brewfile" 2>/dev/null || true
   fi
+  safe_cp /tmp/mac-migration-brew.txt "$OUTPUT_DIR/raw/homebrew.txt" "$(dry)"
 else
   echo "Homebrew not installed" > /tmp/mac-migration-brew.txt
-  run "cp /tmp/mac-migration-brew.txt \"$OUTPUT_DIR/raw/homebrew.txt\""
+  safe_cp /tmp/mac-migration-brew.txt "$OUTPUT_DIR/raw/homebrew.txt" "$(dry)"
 fi
 
 # --- Dev tool versions ---
@@ -107,13 +122,13 @@ log "Collecting dev tool versions"
     fi
   done
 } > /tmp/mac-migration-devtools.txt
-run "cp /tmp/mac-migration-devtools.txt \"$OUTPUT_DIR/raw/dev-tools.txt\""
+safe_cp /tmp/mac-migration-devtools.txt "$OUTPUT_DIR/raw/dev-tools.txt" "$(dry)"
 
 # --- Git ---
 log "Collecting Git config (redacted)"
 redact_git_config > /tmp/mac-migration-git.txt
-run "cp /tmp/mac-migration-git.txt \"$OUTPUT_DIR/raw/git-config.txt\""
-copy_if_exists "$HOME/.gitignore_global" "$OUTPUT_DIR/dotfiles/.gitignore_global"
+safe_cp /tmp/mac-migration-git.txt "$OUTPUT_DIR/raw/git-config.txt" "$(dry)"
+safe_cp_redacted "$HOME/.gitignore_global" "$OUTPUT_DIR/dotfiles/.gitignore_global" "$(dry)"
 
 # --- SSH (public keys + sanitized config only) ---
 log "Collecting SSH inventory (no private keys)"
@@ -124,24 +139,24 @@ log "Collecting SSH inventory (no private keys)"
   echo "# SSH config (sanitized)"
   redact_ssh_config
 } > /tmp/mac-migration-ssh.txt
-run "cp /tmp/mac-migration-ssh.txt \"$OUTPUT_DIR/raw/ssh-inventory.txt\""
+safe_cp /tmp/mac-migration-ssh.txt "$OUTPUT_DIR/raw/ssh-inventory.txt" "$(dry)"
 
-# --- Shell dotfiles ---
-log "Collecting shell dotfiles"
+# --- Shell dotfiles (secrets redacted) ---
+log "Collecting shell dotfiles (redacted)"
 for f in .zshrc .zprofile .zshenv .bashrc .bash_profile .bash_aliases; do
-  copy_if_exists "$HOME/$f" "$OUTPUT_DIR/dotfiles/$f"
+  safe_cp_redacted "$HOME/$f" "$OUTPUT_DIR/dotfiles/$f" "$(dry)"
 done
-copy_if_exists "$HOME/.config/starship.toml" "$OUTPUT_DIR/dotfiles/starship.toml"
+safe_cp_redacted "$HOME/.config/starship.toml" "$OUTPUT_DIR/dotfiles/starship.toml" "$(dry)"
 
 # --- IDE extensions ---
 log "Collecting IDE extension lists"
 if command -v code &>/dev/null; then
   code --list-extensions > /tmp/vscode-extensions.txt 2>/dev/null || true
-  run "cp /tmp/vscode-extensions.txt \"$OUTPUT_DIR/extensions/vscode.txt\""
+  safe_cp /tmp/vscode-extensions.txt "$OUTPUT_DIR/extensions/vscode.txt" "$(dry)"
 fi
 if command -v cursor &>/dev/null; then
   cursor --list-extensions > /tmp/cursor-extensions.txt 2>/dev/null || true
-  run "cp /tmp/cursor-extensions.txt \"$OUTPUT_DIR/extensions/cursor.txt\""
+  safe_cp /tmp/cursor-extensions.txt "$OUTPUT_DIR/extensions/cursor.txt" "$(dry)"
 fi
 
 # --- Applications ---
@@ -158,7 +173,7 @@ log "Collecting application inventory"
     done
   done
 } > /tmp/mac-migration-apps.txt
-run "cp /tmp/mac-migration-apps.txt \"$OUTPUT_DIR/raw/applications.txt\""
+safe_cp /tmp/mac-migration-apps.txt "$OUTPUT_DIR/raw/applications.txt" "$(dry)"
 
 # --- Git repos (shallow scan) ---
 log "Scanning git repositories (max depth 5)"
@@ -167,16 +182,20 @@ if $DRY_RUN; then
 else
   {
     find "$HOME" -maxdepth 5 -name .git -type d -prune 2>/dev/null | head -200 | while read -r gitdir; do
-    repo="${gitdir%/.git}"
-    branch=$(git -C "$repo" branch --show-current 2>/dev/null || echo "unknown")
-    remote=$(git -C "$repo" remote get-url origin 2>/dev/null | sed -E 's/(:\/\/)[^@]+@/\1***@/g' || echo "none")
-    last_commit=$(git -C "$repo" log -1 --format='%h %ci %s' 2>/dev/null || echo "unknown")
-    dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-    echo "$repo|$branch|$remote|$last_commit|dirty=$dirty"
+      repo="${gitdir%/.git}"
+      branch=$(git -C "$repo" branch --show-current 2>/dev/null || echo "unknown")
+      remote=$(git -C "$repo" remote get-url origin 2>/dev/null | sed -E 's/(:\/\/)[^@]+@/\1***@/g' || echo "none")
+      last_commit=$(git -C "$repo" log -1 --format='%h %ci %s' 2>/dev/null || echo "unknown")
+      dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+      unpushed=0
+      if git -C "$repo" rev-parse '@{u}' &>/dev/null; then
+        unpushed=$(git -C "$repo" log '@{u}'.. --oneline 2>/dev/null | wc -l | tr -d ' ')
+      fi
+      echo "$repo|$branch|$remote|$last_commit|dirty=$dirty|unpushed=$unpushed"
     done
   } > /tmp/mac-migration-repos.txt
 fi
-run "cp /tmp/mac-migration-repos.txt \"$OUTPUT_DIR/raw/git-repos.txt\""
+safe_cp /tmp/mac-migration-repos.txt "$OUTPUT_DIR/raw/git-repos.txt" "$(dry)"
 
 # --- Automation ---
 log "Collecting automation inventory"
@@ -187,7 +206,7 @@ log "Collecting automation inventory"
   echo "# Cron"
   crontab -l 2>/dev/null || echo "no crontab"
 } > /tmp/mac-migration-automation.txt
-run "cp /tmp/mac-migration-automation.txt \"$OUTPUT_DIR/raw/automation.txt\""
+safe_cp /tmp/mac-migration-automation.txt "$OUTPUT_DIR/raw/automation.txt" "$(dry)"
 
 # --- Fonts ---
 log "Collecting fonts"
@@ -195,40 +214,33 @@ log "Collecting fonts"
   ls "$HOME/Library/Fonts/" 2>/dev/null || true
   ls /Library/Fonts/ 2>/dev/null || true
 } > /tmp/mac-migration-fonts.txt
-run "cp /tmp/mac-migration-fonts.txt \"$OUTPUT_DIR/raw/fonts.txt\""
+safe_cp /tmp/mac-migration-fonts.txt "$OUTPUT_DIR/raw/fonts.txt" "$(dry)"
 
 # --- Manifest ---
 log "Writing manifest"
-MANIFEST="$OUTPUT_DIR/manifest.json"
 if $DRY_RUN; then
   echo "[dry-run] write manifest.json"
 else
-  cat > "$MANIFEST" <<EOF
-{
-  "version": "1.0",
-  "created_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "hostname": "$HOSTNAME",
-  "macos_version": "$(sw_vers -productVersion)",
-  "hardware": "$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Model Name|Chip|Memory/ {print $2}' | tr '\n' ' ' | sed 's/ $//')",
-  "bundle_type": "mac-migration-audit",
-  "read_only_audit": true,
-  "secrets_included": false
-}
-EOF
+  HARDWARE=$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Model Name|Chip|Memory/ {print $2}' | tr '\n' ' ' | sed 's/ $//')
+  write_manifest_json "$OUTPUT_DIR/manifest.json" "$HOSTNAME" "$(sw_vers -productVersion)" "${HARDWARE:-unknown}"
 fi
 
 # --- Stub scripts for agent to expand ---
 if ! $DRY_RUN; then
-  [[ -f "$OUTPUT_DIR/install.sh" ]] || cp "$(dirname "$0")/templates/install.sh" "$OUTPUT_DIR/install.sh" 2>/dev/null || cat > "$OUTPUT_DIR/install.sh" <<'STUB'
+  if [[ ! -f "$OUTPUT_DIR/install.sh" ]]; then
+    cat > "$OUTPUT_DIR/install.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "Run unimage.sh instead, or customize this script after agent generates install plan."
 STUB
-  [[ -f "$OUTPUT_DIR/restore.sh" ]] || cat > "$OUTPUT_DIR/restore.sh" <<'STUB'
+  fi
+  if [[ ! -f "$OUTPUT_DIR/restore.sh" ]]; then
+    cat > "$OUTPUT_DIR/restore.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "Run unimage.sh instead, or customize this script after agent generates restore plan."
 STUB
+  fi
   chmod +x "$OUTPUT_DIR/install.sh" "$OUTPUT_DIR/restore.sh" 2>/dev/null || true
 fi
 
