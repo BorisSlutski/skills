@@ -1,79 +1,86 @@
 # Skills
 
-A collection of [Agent Skills](https://agentskills.io) for Claude Code, Cursor, Codex, and other coding agents.
+Personal [Agent Skills](https://agentskills.io) for Claude Code, Cursor, Codex, and other coding agents.
 
-## Install All
+## Skills
+
+<!-- SKILLS_TABLE_START -->
+| Skill | Description |
+|-------|-------------|
+| [what-i-did](what-i-did) | Summarize yesterday's GitHub activity and send a Slack DM with the recap. Use when user says "what-i-did", "recap yesterday", "daily summary", or "yesterday summary". |
+<!-- SKILLS_TABLE_END -->
+
+## Install
+
+Install everything globally:
 
 ```bash
 npx skills add BorisSlutski/skills --all -g
 ```
 
-Installs all skills globally with symlinks to `~/.agents/skills/`, `~/.claude/skills/`, `~/.cursor/skills/`, and any other detected agents.
-
-## Install Individual
+Install one skill:
 
 ```bash
 npx skills add BorisSlutski/skills/what-i-did -g -y
 ```
 
-| Skill | Description |
-|-------|-------------|
-| [what-i-did](what-i-did) | Summarize yesterday's GitHub activity, grouped by repo, business unit, and type (bug / feature), and send a Slack DM recap |
+From a local clone:
 
-## Flags
+```bash
+npm run install:global
+```
 
-| Command | Behavior |
-|---------|----------|
-| `... -g` | Adds the skill globally, asks you for confirmation if needed. |
-| `... -g -y` | Adds the skill globally and doesn't ask any questions, installs automatically. |
+| Flag | Behavior |
+|------|----------|
+| `-g` | Install globally |
+| `-g -y` | Install globally without prompts |
+| `--all` | Install every skill in this repo |
 
-## How to Use in Cursor
+## Usage in Cursor
 
-### Option A — Personal (available in all your projects)
+**Global install** — available in all projects:
 
 ```bash
 npx skills add BorisSlutski/skills/what-i-did -g -y
 ```
 
-Cursor will automatically discover the skill. Trigger it by typing the skill name or a phrase from its description in chat.
-
-### Option B — Project (shared with your team)
+**Project install** — share with the team:
 
 ```bash
 cp -r what-i-did .cursor/skills/
 ```
 
-Anyone who opens this project in Cursor will have access to the skill.
+**Manual attach** — type `@` in chat and pick the `SKILL.md` file.
 
-### Option C — Manual attach
+## Add a New Skill
 
-In Cursor chat, type `@` and select the `SKILL.md` file directly, or drag it into the chat window.
-
-## How to Use with Claude
-
-1. Open the `SKILL.md` of the skill you want.
-2. Paste its contents as a system prompt or as the first user message.
-3. Send your task, e.g. `"Run the what-i-did workflow for yesterday."`
-
-## Creating a New Skill
-
-Skills live in `<skill-name>/SKILL.md` at the repo root.
+1. Create a folder at the repo root:
 
 ```
 your-skill-name/
-├── SKILL.md        # Required — main instructions + YAML frontmatter
-└── README.md       # Optional — detailed docs for this skill
+├── SKILL.md        # required
+└── README.md       # optional
 ```
 
-### SKILL.md frontmatter
+2. Add frontmatter to `SKILL.md`:
 
 ```yaml
 ---
 name: your-skill-name
-description: |
-  What the skill does and when to use it.
-  Include trigger phrases so the agent auto-discovers it.
+description: What it does and when to use it. Include trigger phrases.
 ---
+```
+
+3. Regenerate the skills table:
+
+```bash
+npm run generate
+```
+
+4. Validate before committing:
+
+```bash
+npm run validate
 ```
 
 ### Tips
@@ -81,13 +88,6 @@ description: |
 - Keep `SKILL.md` under 500 lines
 - Put heavy reference material in a separate file and link to it
 - Use concrete output templates — they improve quality significantly
-
-## Contributing
-
-1. Fork this repo
-2. Add your skill as `your-skill-name/SKILL.md`
-3. Add a row to the skills table in this README
-4. Open a PR
 
 ## License
 
