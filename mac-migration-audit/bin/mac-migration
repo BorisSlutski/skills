@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# mac-migration — CLI wrapper (no repo clone required after global skill install).
+# mac-migration — CLI wrapper (no repo clone required).
+# Bootstraps full skill to ~/.cache on first one-shot run.
 # Usage:
 #   mac-migration create-image [output-dir] [--dry-run] [--install-homebrew]
 #   mac-migration validate-bundle <bundle-dir>
@@ -7,8 +8,93 @@
 set -euo pipefail
 
 BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_ROOT="$(cd "$BIN_DIR/.." && pwd)"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/mac-migration-audit"
+MAC_MIGRATION_REPO="${MAC_MIGRATION_REPO:-https://github.com/BorisSlutski/skills.git}"
+MAC_MIGRATION_BRANCH="${MAC_MIGRATION_BRANCH:-main}"
+
+skill_has_scripts() {
+  [[ -f "$1/scripts/create-image.sh" ]]
+}
+
+bootstrap_to_cache() {
+  local cache="$1"
+  mkdir -p "$cache"
+  if skill_has_scripts "$cache"; then
+    return 0
+  fi
+
+  echo "==> First run: downloading mac-migration-audit to $cache" >&2
+  local tmp branch cloned_dir
+  tmp="$(mktemp -d)"
+
+  for branch in "$MAC_MIGRATION_BRANCH" feature/add-mac-migration-audit-skill; do
+    rm -rf "$tmp"/*
+    if command -v git &>/dev/null; then
+      if git clone --depth 1 --branch "$branch" "$MAC_MIGRATION_REPO" "$tmp/repo" 2>/dev/null \
+        && [[ -d "$tmp/repo/mac-migration-audit" ]]; then
+        cp -a "$tmp/repo/mac-migration-audit/." "$cache/"
+        rm -rf "$tmp"
+        chmod +x "$cache/bin/mac-migration" "$cache/scripts/"*.sh 2>/dev/null || true
+        chmod +x "$cache/scripts/lib/"*.sh 2>/dev/null || true
+        echo "==> Bootstrap complete (branch: $branch)" >&2
+        return 0
+      fi
+    else
+      if curl -fsSL "https://codeload.github.com/BorisSlutski/skills/tar.gz/${branch}" \
+        -o "$tmp/archive.tar.gz" 2>/dev/null; then
+        tar xzf "$tmp/archive.tar.gz" -C "$tmp"
+        cloned_dir="$(find "$tmp" -maxdepth 1 -type d -name 'skills-*' | head -1)"
+        if [[ -n "$cloned_dir" && -d "$cloned_dir/mac-migration-audit" ]]; then
+          cp -a "$cloned_dir/mac-migration-audit/." "$cache/"
+          rm -rf "$tmp"
+          chmod +x "$cache/bin/mac-migration" "$cache/scripts/"*.sh 2>/dev/null || true
+          chmod +x "$cache/scripts/lib/"*.sh 2>/dev/null || true
+          echo "==> Bootstrap complete (branch: $branch)" >&2
+          return 0
+        fi
+      fi
+    fi
+  done
+
+  rm -rf "$tmp"
+  echo "Bootstrap failed: could not download mac-migration-audit from GitHub." >&2
+  echo "Try: npx skills add BorisSlutski/skills/mac-migration-audit -g -y" >&2
+  return 1
+}
+
+resolve_skill_root() {
+  local candidate
+
+  if skill_has_scripts "$(cd "$BIN_DIR/.." && pwd)"; then
+    echo "$(cd "$BIN_DIR/.." && pwd)"
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME/.cursor/skills/mac-migration-audit" \
+    "$HOME/.agents/skills/mac-migration-audit" \
+    "$CACHE_DIR"; do
+    if skill_has_scripts "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  bootstrap_to_cache "$CACHE_DIR" || exit 1
+  if ! skill_has_scripts "$CACHE_DIR"; then
+    echo "Bootstrap incomplete: scripts missing in $CACHE_DIR" >&2
+    exit 1
+  fi
+  echo "$CACHE_DIR"
+}
+
+SKILL_ROOT="$(resolve_skill_root)"
 SCRIPTS="$SKILL_ROOT/scripts"
+
+if [[ ! -f "$SCRIPTS/create-image.sh" ]]; then
+  echo "Error: mac-migration scripts not found at $SCRIPTS" >&2
+  exit 1
+fi
 
 usage() {
   cat <<EOF
@@ -16,13 +102,11 @@ Mac Migration Audit — run without cloning the repo.
 
 Install once (global skill):
   npx skills add BorisSlutski/skills/mac-migration-audit -g -y
-
-Then add to PATH (pick one shell config file):
   export PATH="\$HOME/.cursor/skills/mac-migration-audit/bin:\$PATH"
-  # or: ~/.agents/skills/mac-migration-audit/bin
 
-One-shot without install (downloads latest script from GitHub):
-  curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration && chmod +x /tmp/mac-migration
+One-shot (auto-downloads full skill to cache on first run):
+  curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration
+  chmod +x /tmp/mac-migration
   /tmp/mac-migration create-image --dry-run
 
 Commands:
@@ -31,11 +115,7 @@ Commands:
   unimage <dir> [--dry-run]                              Restore on destination Mac
   help                                                   Show this message
 
-Examples:
-  mac-migration create-image ~/Desktop/my-mac-bundle
-  mac-migration create-image --install-homebrew
-  mac-migration validate-bundle ~/Desktop/my-mac-bundle
-  mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
+Skill root: $SKILL_ROOT
 EOF
 }
 

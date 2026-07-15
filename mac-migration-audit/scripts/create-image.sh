@@ -95,17 +95,21 @@ safe_cp /tmp/mac-migration-os.txt "$OUTPUT_DIR/raw/os-hardware.txt" "$(dry)"
 log "Collecting Homebrew inventory"
 if command -v brew &>/dev/null; then
   if $DRY_RUN; then
-    echo "[dry-run] brew inventory and brew bundle dump --file=\"$OUTPUT_DIR/Brewfile\"" > /tmp/mac-migration-brew.txt
+    echo "[dry-run] brew bundle dump --file=\"$OUTPUT_DIR/Brewfile\"" > /tmp/mac-migration-brew.txt
     echo "[dry-run] brew bundle dump --file=\"$OUTPUT_DIR/Brewfile\""
   else
+    brew bundle dump --describe --force --file="$OUTPUT_DIR/Brewfile" 2>/dev/null || true
     {
       brew --version
       echo "---"
       brew list --versions 2>/dev/null || true
-      echo "---"
-      brew bundle dump --describe --force --file=/dev/stdout 2>/dev/null || true
+      echo "--- Brewfile ---"
+      if [[ -s "$OUTPUT_DIR/Brewfile" ]]; then
+        cat "$OUTPUT_DIR/Brewfile"
+      else
+        echo "(Brewfile empty or not created)"
+      fi
     } > /tmp/mac-migration-brew.txt
-    brew bundle dump --describe --force --file="$OUTPUT_DIR/Brewfile" 2>/dev/null || true
   fi
   safe_cp /tmp/mac-migration-brew.txt "$OUTPUT_DIR/raw/homebrew.txt" "$(dry)"
 else

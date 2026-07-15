@@ -9,15 +9,27 @@ redact_file_to() {
   awk '
     {
       line = $0
-      # export VAR=value or VAR=value for known secret-like names
-      if (line ~ /^[[:space:]]*(export[[:space:]]+)?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|PRIVATE)[A-Za-z0-9_]*=/) {
+
+      # Do not copy instructions to source secret/env files
+      if (line ~ /^[[:space:]]*(source|\.)[[:space:]]+[^#]*\.(env|secrets)(\.[A-Za-z0-9._-]+)?([[:space:]]|$)/) {
+        print "# [REDACTED source] " line
+        next
+      }
+
+      # Redact common token formats anywhere on the line
+      if (line ~ /(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,})/) {
+        gsub(/(sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{8,})/, "[REDACTED]", line)
+      }
+
+      # export VAR=value for secret-like variable names
+      if (line ~ /^[[:space:]]*(export[[:space:]]+)?[A-Za-z0-9_]*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|PRIVATE|API)[A-Za-z0-9_]*=/) {
         sub(/=.*/, "=[REDACTED]", line)
       }
-      # Generic api_key / api-key assignments
+      # Generic api_key assignments
       else if (line ~ /[Aa][Pp][Ii][_-]?[Kk][Ee][Yy][[:space:]]*[=:][[:space:]]*/) {
         sub(/[=:][[:space:]]*.*/, "=[REDACTED]", line)
       }
-      # Bearer tokens in strings
+      # Bearer tokens
       else if (line ~ /[Bb]earer[[:space:]]+[A-Za-z0-9._-]+/) {
         sub(/[Bb]earer[[:space:]]+[A-Za-z0-9._-]+/, "Bearer [REDACTED]", line)
       }

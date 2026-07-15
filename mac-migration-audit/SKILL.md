@@ -18,6 +18,7 @@ Your goal is to analyze the user's existing Mac and generate everything needed t
 3. **Confirm before destination actions** — ask before running anything on the new Mac
 4. **SSH keys** — list public keys and key names only; never export or display private key contents
 5. **Network/VPN** — inventory configs without exposing credentials
+6. **Dotfiles in bundle** — redaction is best-effort; remind user to review `dotfiles/` before sharing the bundle
 
 ## Run Without Cloning the Repo
 
@@ -43,7 +44,9 @@ mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
 mac-migration help
 ```
 
-### Option C — One-shot from GitHub (no install)
+### Option C — One-shot from GitHub (auto-bootstrap)
+
+Downloads only the launcher; on first run it fetches the full skill to `~/.cache/mac-migration-audit`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration

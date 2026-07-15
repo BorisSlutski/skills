@@ -15,7 +15,9 @@ mac-migration create-image ~/Desktop/my-mac-bundle
 mac-migration unimage ~/Desktop/my-mac-bundle --dry-run
 ```
 
-### One-shot (download CLI from GitHub)
+### One-shot (auto-bootstrap on first run)
+
+Downloads the launcher; first run caches the full skill to `~/.cache/mac-migration-audit`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration
@@ -78,7 +80,7 @@ mac-migration unimage ~/Desktop/my-mac-bundle
 - Git global config (secrets redacted)
 - SSH public keys and sanitized ssh config
 - IDE extension lists
-- Shell dotfiles (secrets redacted — `KEY`/`TOKEN`/`PASSWORD` values replaced with `[REDACTED]`)
+- Shell dotfiles (secrets redacted — review `dotfiles/` in the bundle before sharing or restoring)
 - Application inventory with last-used dates
 - Git repo locations and status
 - Launch agents, cron, fonts
@@ -86,6 +88,6 @@ mac-migration unimage ~/Desktop/my-mac-bundle
 ## What Is Never Captured
 
 - Private SSH keys
-- Passwords, tokens, API keys
+- Passwords, tokens, API keys (best-effort redaction in dotfiles — always review `dotfiles/` before transfer)
 - Browser saved passwords
 - Keychain contents

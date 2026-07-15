@@ -84,6 +84,8 @@ if [[ -f "$BUNDLE_DIR/Brewfile" ]]; then
     echo "  WARN Brewfile present; brew not installed — skipped brew bundle check"
     WARNINGS=$((WARNINGS + 1))
   fi
+elif [[ -f "$BUNDLE_DIR/raw/homebrew.txt" ]] && grep -qi "Homebrew not installed" "$BUNDLE_DIR/raw/homebrew.txt"; then
+  echo "  OK   No Brewfile (source Mac had no Homebrew)"
 else
   echo "  WARN No Brewfile (optional)"
   WARNINGS=$((WARNINGS + 1))
