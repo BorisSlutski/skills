@@ -2,6 +2,8 @@
   "name": "borisslutski-skills",
   "private": true,
   "scripts": {
+    "generate": "node scripts/generate-catalog.mjs",
+    "validate": "node scripts/validate-skills.mjs",
     "install:global": "npx -y skills add . --all -g"
   }
 }
