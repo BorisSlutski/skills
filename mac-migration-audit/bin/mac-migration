@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# mac-migration — CLI wrapper (no repo clone required).
+# Bootstraps full skill to ~/.cache on first one-shot run.
+# Usage:
+#   mac-migration create-image [output-dir] [--dry-run] [--install-homebrew]
+#   mac-migration validate-bundle <bundle-dir>
+#   mac-migration unimage <bundle-dir> [--dry-run]
+set -euo pipefail
+
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/mac-migration-audit"
+MAC_MIGRATION_REPO="${MAC_MIGRATION_REPO:-https://github.com/BorisSlutski/skills.git}"
+MAC_MIGRATION_BRANCH="${MAC_MIGRATION_BRANCH:-main}"
+MAC_MIGRATION_VERSION="${MAC_MIGRATION_VERSION:-1.1}"
+
+skill_has_scripts() {
+  [[ -f "$1/scripts/create-image.sh" ]]
+}
+
+cache_is_current() {
+  local cache="$1"
+  [[ -f "$cache/.bootstrap-version" ]] && [[ "$(cat "$cache/.bootstrap-version")" == "$MAC_MIGRATION_VERSION" ]]
+}
+
+should_refresh_cache() {
+  [[ "${MAC_MIGRATION_FORCE_REFRESH:-}" == "1" ]] || ! cache_is_current "$1"
+}
+
+download_skill_to_cache() {
+  local cache="$1"
+  local tmp branch cloned_dir
+  tmp="$(mktemp -d)"
+  branch="$MAC_MIGRATION_BRANCH"
+
+  if command -v git &>/dev/null; then
+    if git clone --depth 1 --branch "$branch" "$MAC_MIGRATION_REPO" "$tmp/repo" 2>/dev/null \
+      && [[ -d "$tmp/repo/mac-migration-audit" ]]; then
+      mkdir -p "$cache"
+      rm -rf "${cache:?}/"*
+      cp -a "$tmp/repo/mac-migration-audit/." "$cache/"
+      rm -rf "$tmp"
+      chmod +x "$cache/bin/mac-migration" "$cache/scripts/"*.sh 2>/dev/null || true
+      chmod +x "$cache/scripts/lib/"*.sh 2>/dev/null || true
+      echo "$MAC_MIGRATION_VERSION" > "$cache/.bootstrap-version"
+      echo "==> Bootstrap complete (branch: $branch, v$MAC_MIGRATION_VERSION)" >&2
+      return 0
+    fi
+  fi
+
+  if curl -fsSL "https://codeload.github.com/BorisSlutski/skills/tar.gz/${branch}" \
+    -o "$tmp/archive.tar.gz" 2>/dev/null; then
+    tar xzf "$tmp/archive.tar.gz" -C "$tmp"
+    cloned_dir="$(find "$tmp" -maxdepth 1 -type d -name 'skills-*' | head -1)"
+    if [[ -n "$cloned_dir" && -d "$cloned_dir/mac-migration-audit" ]]; then
+      mkdir -p "$cache"
+      rm -rf "${cache:?}/"*
+      cp -a "$cloned_dir/mac-migration-audit/." "$cache/"
+      rm -rf "$tmp"
+      chmod +x "$cache/bin/mac-migration" "$cache/scripts/"*.sh 2>/dev/null || true
+      chmod +x "$cache/scripts/lib/"*.sh 2>/dev/null || true
+      echo "$MAC_MIGRATION_VERSION" > "$cache/.bootstrap-version"
+      echo "==> Bootstrap complete (branch: $branch, v$MAC_MIGRATION_VERSION)" >&2
+      return 0
+    fi
+  fi
+
+  rm -rf "$tmp"
+  return 1
+}
+
+bootstrap_to_cache() {
+  local cache="$1"
+
+  if [[ "${MAC_MIGRATION_FORCE_REFRESH:-}" == "1" ]]; then
+    echo "==> Refreshing cache (MAC_MIGRATION_FORCE_REFRESH=1)" >&2
+    rm -rf "$cache"
+  elif skill_has_scripts "$cache" && cache_is_current "$cache"; then
+    return 0
+  elif skill_has_scripts "$cache"; then
+    local cached_ver
+    cached_ver="$(cat "$cache/.bootstrap-version" 2>/dev/null || echo unknown)"
+    echo "==> Cache outdated (v$cached_ver -> v$MAC_MIGRATION_VERSION), refreshing..." >&2
+    rm -rf "$cache"
+  fi
+
+  echo "==> Downloading mac-migration-audit to $cache" >&2
+  if download_skill_to_cache "$cache"; then
+    return 0
+  fi
+
+  echo "Bootstrap failed: could not download mac-migration-audit from GitHub." >&2
+  echo "Try: npx skills add BorisSlutski/skills/mac-migration-audit -g -y" >&2
+  return 1
+}
+
+resolve_skill_root() {
+  local candidate
+
+  if skill_has_scripts "$(cd "$BIN_DIR/.." && pwd)"; then
+    echo "$(cd "$BIN_DIR/.." && pwd)"
+    return 0
+  fi
+
+  for candidate in \
+    "$HOME/.cursor/skills/mac-migration-audit" \
+    "$HOME/.agents/skills/mac-migration-audit" \
+    "$CACHE_DIR"; do
+    if [[ "$candidate" == "$CACHE_DIR" ]] && skill_has_scripts "$candidate" && should_refresh_cache "$candidate"; then
+      bootstrap_to_cache "$candidate" || continue
+    fi
+    if skill_has_scripts "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  bootstrap_to_cache "$CACHE_DIR" || exit 1
+  if ! skill_has_scripts "$CACHE_DIR"; then
+    echo "Bootstrap incomplete: scripts missing in $CACHE_DIR" >&2
+    exit 1
+  fi
+  echo "$CACHE_DIR"
+}
+
+SKILL_ROOT="$(resolve_skill_root)"
+SCRIPTS="$SKILL_ROOT/scripts"
+
+if [[ ! -f "$SCRIPTS/create-image.sh" ]]; then
+  echo "Error: mac-migration scripts not found at $SCRIPTS" >&2
+  exit 1
+fi
+
+usage() {
+  cat <<EOF
+Mac Migration Audit — run without cloning the repo.
+
+Install once (global skill):
+  npx skills add BorisSlutski/skills/mac-migration-audit -g -y
+  export PATH="\$HOME/.cursor/skills/mac-migration-audit/bin:\$PATH"
+
+One-shot (auto-downloads full skill to cache on first run):
+  curl -fsSL https://raw.githubusercontent.com/BorisSlutski/skills/main/mac-migration-audit/bin/mac-migration -o /tmp/mac-migration
+  chmod +x /tmp/mac-migration
+  /tmp/mac-migration create-image --dry-run
+
+Commands:
+  create-image [dir] [--dry-run] [--install-homebrew]   Audit source Mac → bundle
+  validate-bundle <dir>                                  Check bundle before restore
+  unimage <dir> [--dry-run]                              Restore on destination Mac
+  help                                                   Show this message
+
+Environment:
+  MAC_MIGRATION_FORCE_REFRESH=1   Re-download cached skill (ignores version stamp)
+  MAC_MIGRATION_BRANCH=main       Git branch for bootstrap download
+
+Skill root: $SKILL_ROOT
+EOF
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  create-image)
+    exec "$SCRIPTS/create-image.sh" "$@"
+    ;;
+  validate-bundle)
+    exec "$SCRIPTS/validate-bundle.sh" "$@"
+    ;;
+  unimage)
+    exec "$SCRIPTS/unimage.sh" "$@"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
