@@ -7,6 +7,7 @@ Personal [Agent Skills](https://agentskills.io) for Claude Code, Cursor, Codex, 
 <!-- SKILLS_TABLE_START -->
 | Skill | Description |
 |-------|-------------|
+| [mac-migration-audit](mac-migration-audit) | Audits an existing macOS environment in read-only mode and generates migration reports, installation scripts, and step-by-step setup guidance for recreating the working environment on a new Mac. Use when the user mentions Mac migration, new Mac setup, environment recreation, Mac audit, create-image, unimage, dev environment backup, or asks to inventory applications, tools, dotfiles, repos, or cloud sync before switching machines. |
 | [what-i-did](what-i-did) | Summarize yesterday's GitHub activity and send a Slack DM with the recap. Use when user says "what-i-did", "recap yesterday", "daily summary", or "yesterday summary". |
 <!-- SKILLS_TABLE_END -->
 
